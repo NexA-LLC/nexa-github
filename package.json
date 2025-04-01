@@ -1,0 +1,14 @@
+{
+  "name": "bitbucket-to-github-migration",
+  "version": "1.0.0",
+  "description": "Migrate issues from Bitbucket to GitHub",
+  "main": "migrate.js",
+  "scripts": {
+    "start": "node migrate.js"
+  },
+  "dependencies": {
+    "@octokit/rest": "^20.0.2",
+    "axios": "^1.6.7",
+    "dotenv": "^16.4.5"
+  }
+} 
