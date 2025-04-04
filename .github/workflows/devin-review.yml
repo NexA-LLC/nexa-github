@@ -1,0 +1,131 @@
+name: Devin Review
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  devin-review:
+    if: |
+      (github.event_name == 'push' && !contains(github.event.head_commit.message, 'Merge pull request')) ||
+      (github.event_name == 'pull_request' && github.actor != 'devin-ai-integration[bot]' && !contains(github.event.pull_request.labels.*.name, 'devin-auto-fix'))
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq
+
+      - name: Load prompt
+        id: load-prompt
+        env:
+          GIT_HASH: ${{ github.sha }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+          SLACK_WEB_HOOK: ${{ secrets.SLACK_WEB_HOOK }}
+        run: |
+          # プロンプトを読み込み、環境変数を置換してBase64エンコード
+          if [ ! -f .github/prompts/github-action.md ]; then
+            echo "Error: Prompt file not found"
+            exit 1
+          fi
+          PROMPT=$(cat .github/prompts/github-action.md)
+          # 環境変数を置換
+          PROMPT=$(echo "$PROMPT" | sed "s|\${GIT_HASH}|$GIT_HASH|g")
+          PROMPT=$(echo "$PROMPT" | sed "s|\${GITHUB_REPOSITORY}|$GITHUB_REPOSITORY|g")
+          PROMPT=$(echo "$PROMPT" | sed "s|\${GITHUB_REF_NAME}|$GITHUB_REF_NAME|g")
+          PROMPT=$(echo "$PROMPT" | sed "s|\${SLACK_WEB_HOOK}|$SLACK_WEB_HOOK|g")
+          # Base64エンコード
+          PROMPT=$(echo "$PROMPT" | base64 -w 0)
+          echo "content=$PROMPT" >> $GITHUB_OUTPUT
+
+      - name: Run Devin Review
+        id: devin-review
+        run: |
+          # 変更されたファイルを取得
+          CHANGED_FILES=$(git diff --name-only HEAD^ HEAD | jq -R -s -c 'split("\n")[:-1]')
+          
+          # プロンプトをBase64デコード
+          PROMPT=$(echo "${{ steps.load-prompt.outputs.content }}" | base64 -d)
+          
+          # リクエストボディを作成
+          REQUEST_BODY=$(jq -n \
+            --arg repo "${{ github.repository }}" \
+            --arg branch "${{ github.ref_name }}" \
+            --arg commit "${{ github.sha }}" \
+            --argjson files "$CHANGED_FILES" \
+            --arg prompt "$PROMPT" \
+            '{
+              repository: $repo,
+              branch: $branch,
+              commit: $commit,
+              files: $files,
+              prompt: $prompt
+            }')
+
+          echo "Request body: $REQUEST_BODY"
+
+          RESPONSE=$(curl -s -X POST \
+            -H "Authorization: Bearer ${{ secrets.DEVIN_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d "$REQUEST_BODY" \
+            https://api.devin.ai/v1/sessions)
+          
+          echo "API Response: $RESPONSE"
+
+          # レスポンスを解析
+          if [ -z "$RESPONSE" ]; then
+            echo "Error: Empty response from API"
+            exit 1
+          fi
+
+          # JSONレスポンスの構文チェック
+          if ! echo "$RESPONSE" | jq '.' > /dev/null 2>&1; then
+            echo "Error: Invalid JSON response from API"
+            exit 1
+          fi
+
+          # セッションIDを取得
+          SESSION_ID=$(echo "$RESPONSE" | jq -r '.session_id')
+          if [ -z "$SESSION_ID" ]; then
+            echo "Error: No session ID in response"
+            exit 1
+          fi
+
+          # セッションURLを出力
+          SESSION_URL=$(echo "$RESPONSE" | jq -r '.url')
+          echo "Devin session created: $SESSION_URL"
+
+          # 結果を出力
+          echo "session_url<<EOF" >> $GITHUB_OUTPUT
+          echo "$SESSION_URL" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create Pull Request if needed
+        if: steps.devin-review.outputs.session_url != ''
+        uses: peter-evans/create-pull-request@v5
+        with:
+          commit-message: "fix: Devinによる自動修正"
+          title: "fix: Devinによる自動修正"
+          body: |
+            Devinのレビューにより、以下の問題が検出されました：
+
+            ${{ steps.devin-review.outputs.session_url }}
+
+            このPRでは、上記の問題に対する修正を提案します。
+          branch: fix/devin-review-${{ github.sha }}
+          delete-branch: true
+          labels: devin-auto-fix
+          token: ${{ secrets.GITHUB_TOKEN }}
+          committer: GitHub <noreply@github.com>
+          author: ${{ github.actor }} <${{ github.actor }}@users.noreply.github.com>
+          signoff: false
+          draft: false
+          base: ${{ github.ref_name }}
+

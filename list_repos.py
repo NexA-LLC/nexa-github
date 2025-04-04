@@ -1,147 +1,43 @@
-import os
+#!/usr/bin/env python3
 import json
-from dotenv import load_dotenv
-import requests
-from gql import gql, Client
-from gql.transport.requests import RequestsHTTPTransport
-
-# 環境変数の読み込み
-load_dotenv()
-
-# GitHubのGraphQLエンドポイント
-GITHUB_API_URL = 'https://api.github.com/graphql'
-# GitHubのトークン
-GITHUB_TOKEN = os.getenv('GITHUB_MIGRATION_TOKEN')
-
-# GraphQLクライアントの初期化
-transport = RequestsHTTPTransport(
-    url=GITHUB_API_URL,
-    headers={'Authorization': f'Bearer {GITHUB_TOKEN}'}
-)
-client = Client(transport=transport, fetch_schema_from_transport=False)
-
-def get_accessible_repositories():
-    """アクセス可能なリポジトリの一覧を取得（個人と組織の両方）"""
-    query = """
-    query($first: Int!, $after: String) {
-        viewer {
-            repositories(first: $first, after: $after) {
-                pageInfo {
-                    hasNextPage
-                    endCursor
-                }
-                nodes {
-                    name
-                    owner {
-                        login
-                        __typename
-                    }
-                    description
-                    visibility
-                    isPrivate
-                    isArchived
-                    isFork
-                    defaultBranchRef {
-                        name
-                    }
-                    updatedAt
-                }
-            }
-            organizations(first: 100) {
-                nodes {
-                    name
-                    repositories(first: $first, after: $after) {
-                        pageInfo {
-                            hasNextPage
-                            endCursor
-                        }
-                        nodes {
-                            name
-                            owner {
-                                login
-                                __typename
-                            }
-                            description
-                            visibility
-                            isPrivate
-                            isArchived
-                            isFork
-                            defaultBranchRef {
-                                name
-                            }
-                            updatedAt
-                        }
-                    }
-                }
-            }
-        }
-    }
-    """
-    
-    try:
-        all_repos = []
-        has_next_page = True
-        end_cursor = None
-        
-        while has_next_page:
-            result = client.execute(gql(query), variable_values={
-                'first': 100,
-                'after': end_cursor
-            })
-            
-            # 個人のリポジトリを追加
-            viewer_repos = result['viewer']['repositories']
-            all_repos.extend(viewer_repos['nodes'])
-            
-            # 組織のリポジトリを追加
-            for org in result['viewer']['organizations']['nodes']:
-                org_repos = org['repositories']
-                all_repos.extend(org_repos['nodes'])
-            
-            # ページネーション情報を更新
-            has_next_page = viewer_repos['pageInfo']['hasNextPage']
-            end_cursor = viewer_repos['pageInfo']['endCursor']
-            
-            print(f"取得済みリポジトリ数: {len(all_repos)}")
-        
-        return all_repos
-    except Exception as e:
-        print(f'リポジトリ一覧の取得に失敗しました: {str(e)}')
-        return []
-
-def print_repo(repo):
-    """リポジトリの情報を表示"""
-    owner_type = repo['owner']['__typename']
-    print(f"リポジトリ名: {repo['owner']['login']}/{repo['name']}")
-    print(f"オーナータイプ: {owner_type}")
-    print(f"説明: {repo['description'] or 'なし'}")
-    print(f"可視性: {repo['visibility']}")
-    print(f"プライベート: {'はい' if repo['isPrivate'] else 'いいえ'}")
-    print(f"アーカイブ済み: {'はい' if repo['isArchived'] else 'いいえ'}")
-    print(f"フォーク: {'はい' if repo['isFork'] else 'いいえ'}")
-    print(f"デフォルトブランチ: {repo['defaultBranchRef']['name'] if repo['defaultBranchRef'] else 'なし'}")
-    print(f"最終更新: {repo['updatedAt']}")
-    print("-" * 50)
+import sys
+from github_utils import GitHubManager
 
 def main():
-    """メイン処理"""
-    print("アクセス可能なリポジトリの一覧を取得中...")
-    repos = get_accessible_repositories()
-    
-    if not repos:
-        print("リポジトリが見つかりませんでした。")
-        return
-    
-    print(f"\n合計 {len(repos)} 件のリポジトリが見つかりました\n")
-    
-    # リポジトリの情報を表示
-    for repo in repos:
-        print_repo(repo)
-    
-    # 結果をJSONファイルに保存
-    with open('repos.json', 'w', encoding='utf-8') as f:
-        json.dump(repos, f, ensure_ascii=False, indent=2)
-    print("\nリポジトリ情報を repos.json に保存しました")
+    try:
+        # GitHubマネージャーの初期化
+        gh = GitHubManager()
+        
+        # リポジトリとDevinブランチの情報を取得
+        print("リポジトリを検索中...")
+        repos_info = gh.get_repos_with_devin_branches()
+        
+        if not repos_info:
+            print("Devinブランチを含むリポジトリが見つかりませんでした")
+            return
+        
+        # 結果を表示
+        print(f"\n{len(repos_info)}個のリポジトリにDevinブランチが見つかりました:\n")
+        
+        # 結果をJSONファイルに保存
+        output_file = 'devin_branches.json'
+        with open(output_file, 'w', encoding='utf-8') as f:
+            json.dump(repos_info, f, indent=2, ensure_ascii=False)
+        
+        # 結果を画面に表示
+        for repo in repos_info:
+            print(f"\nリポジトリ: {repo['full_name']}")
+            for branch in repo['devin_branches']:
+                print(f"  - {branch['name']} (最終更新: {branch['last_commit_date']})")
+        
+        print(f"\n詳細な情報は {output_file} に保存されました")
+        
+    except ValueError as e:
+        print(f"エラー: {str(e)}")
+        sys.exit(1)
+    except Exception as e:
+        print(f"予期せぬエラーが発生しました: {str(e)}")
+        sys.exit(1)
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main() 

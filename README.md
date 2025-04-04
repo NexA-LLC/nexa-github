@@ -1,23 +1,88 @@
-# GitHub関連スクリプト
+# nexa_github
 
-このフォルダには、GitHub操作に関連するスクリプトが含まれています。bitbucket関連のスクリプトも一部含まれています。
+GitHubリポジトリ管理用のPythonパッケージです。
 
-## 主なスクリプト
+## 機能
 
-### dependabot_automation.py / dependabot_automation.command
+- リポジトリ一覧の取得と表示
+- Devinブランチの管理（古いブランチの自動クリーンアップ）
 
-Dependabotによる脆弱性アラートと自動PRの処理を自動化するスクリプト。
-freee Developers Hubの記事「Devindabot: Devinで実現するライブラリの脆弱性自動対応システム」を参考に実装。
-https://developers.freee.co.jp/entry/devindabot
+## インストール
 
-### migrate_from_bitbucket.command
+```bash
+pip install -e .
+```
 
-BitbucketリポジトリからGitHubへの移行を支援するスクリプト。
+## 環境変数
 
-### migrate.py
+以下の環境変数が必要です：
 
-リポジトリ移行プロセスを自動化するPythonスクリプト。
+- `GITHUB_TOKEN`: GitHubのアクセストークン
 
-### ikou.command
+## 使用方法
 
-リポジトリ移行を実行するコマンドスクリプト。
+### コマンドライン
+
+#### リポジトリ一覧の表示
+
+```bash
+# 全てのアクセス可能なリポジトリを表示
+github-branch-cleaner list-repos
+
+# JSONファイルに出力
+github-branch-cleaner list-repos --output repos.json
+```
+
+#### Devinブランチのクリーンアップ
+
+```bash
+# シミュレーションモード（実際の削除は行わない）
+github-branch-cleaner cleanup
+
+# 実際に削除を実行
+github-branch-cleaner cleanup --execute
+
+# カスタム設定でクリーンアップ
+github-branch-cleaner cleanup --days 7 --input custom.json --execute
+```
+
+### Pythonコード内での使用
+
+```python
+from nexa_github import GitHubManager
+
+# GitHubManagerのインスタンス化
+gh = GitHubManager()
+
+# リポジトリ一覧の取得
+repos = gh.list_repositories()
+
+# Devinブランチを持つリポジトリの取得
+repos_with_devin = gh.get_repos_with_devin_branches()
+
+# 古いブランチの削除
+result = gh.delete_old_branch(
+    repo_full_name="owner/repo",
+    branch_info={"name": "branch-name", "last_commit_date": "2024-01-01T00:00:00"},
+    days_old=4,
+    dry_run=True
+)
+```
+
+## 開発
+
+### 必要要件
+
+- Python 3.8以上
+- PyGithub
+- python-dotenv
+
+### テスト
+
+```bash
+# TODO: テストの実行方法を追加
+```
+
+## ライセンス
+
+Copyright (c) NexA LLC. All rights reserved.
