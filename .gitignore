@@ -4,7 +4,6 @@ __pycache__/
 *$py.class
 *.so
 .Python
-env/
 build/
 develop-eggs/
 dist/
@@ -23,6 +22,7 @@ wheels/
 
 # Virtual Environment
 venv/
+env/
 ENV/
 
 # IDE
@@ -30,13 +30,19 @@ ENV/
 .vscode/
 *.swp
 *.swo
+.DS_Store
 
 # Environment variables
 .env
+.env.*
+!.env.example
 
 # Logs
 *.log
 
 # Cache files
 issues_cache.json
-update_targets.json 
+update_targets.json
+
+# Project specific
+devin_branches.json 

@@ -1,0 +1,15 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+README.mdに全体の話が書いてあるので読む
+markdownの内容は簡潔に,重複がないように(KISS, DRY原則)
+一貫性が無い場合は質問をして確認をする
+全体のフォルダ構成は, docs/folder-structure.mdに書いてある
+
+
+# nexa python パッケージとモジュール名について
+- package 名はハイフン区切り
+- module 名は アンダースコア区切り
+ -> setup.py とかの中で変なところがあったら直していく
